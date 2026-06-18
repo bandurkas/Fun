@@ -1,3 +1,4 @@
 hyperliquid-python-sdk
 python-dotenv
 requests
+eth-account
