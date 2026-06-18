@@ -13,9 +13,10 @@ case "$1" in
       exit 1
     fi
     shift
+    BOT_ARGS="$*"
     echo "Starting bot in screen session '${SESSION_NAME}'..."
     # Start bot in screen detached mode and write to log file
-    screen -dmS "${SESSION_NAME}" bash -c "cd ${BOT_DIR} && ${VENV_PYTHON} ${BOT_SCRIPT} $@ 2>&1 | tee -a ${LOG_FILE}"
+    screen -dmS "${SESSION_NAME}" bash -c "cd ${BOT_DIR} && ${VENV_PYTHON} ${BOT_SCRIPT} ${BOT_ARGS} 2>&1 | tee -a ${LOG_FILE}"
     echo "Bot started. You can view logs with: ./run_bot.sh logs"
     echo "Or attach to the screen session with: screen -r ${SESSION_NAME}"
     ;;
