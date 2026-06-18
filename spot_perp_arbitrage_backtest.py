@@ -33,6 +33,7 @@ def run_backtest_for_coin(coin: str, data_dir: Path, args) -> dict:
     # Spot is often less liquid and might have missing minutes. We will forward-fill spot.
     spot_by_t = {c["t"]: float(c["c"]) for c in spot_candles}
     perp_by_t = {c["t"]: float(c["c"]) for c in perp_candles}
+    real_spot_ts = {c["t"] for c in spot_candles if float(c.get("v", 0.0)) > 0.0}
     
     # Funding by hour timestamp
     funding_by_t = {}
@@ -107,6 +108,10 @@ def run_backtest_for_coin(coin: str, data_dir: Path, args) -> dict:
                 
             # Check for Exit Condition
             if basis_pct <= exit_threshold:
+                # If strict_spot is enabled, we only exit if there was an actual trade in this minute
+                if args.strict_spot and (t not in real_spot_ts):
+                    continue
+                
                 # Close Spot (Sell)
                 spot_exit_price = spot_price * (1.0 - slip_rate)
                 spot_pnl = (spot_exit_price - position["entry_spot_price"]) * position["spot_size"]
@@ -141,7 +146,12 @@ def run_backtest_for_coin(coin: str, data_dir: Path, args) -> dict:
                 
         else:
             # Check for Entry Condition
+            # Check for Entry Condition
             if basis_pct >= entry_threshold:
+                # If strict_spot is enabled, we only enter if there was an actual trade in this minute
+                if args.strict_spot and (t not in real_spot_ts):
+                    continue
+                
                 # We want a truly delta-neutral position: equal coin sizes for spot and perp
                 # entry_capital = Spot_notional + Perp_notional = N*S + N*P = N*(S + P)
                 # => N = entry_capital / (S + P)
@@ -246,6 +256,19 @@ def run_backtest_for_coin(coin: str, data_dir: Path, args) -> dict:
     print(f"  Total Fees Paid: ${fees_paid:.2f}")
     print(f"  Max Drawdown (Trade-to-Trade): {max_dd:.2f}%")
     
+    # PnL Breakdown
+    total_basis_pnl = total_net_pnl - funding_earned
+    if total_net_pnl > 0:
+        basis_pct_contrib = (total_basis_pnl / total_net_pnl) * 100.0
+        funding_pct_contrib = (funding_earned / total_net_pnl) * 100.0
+        print(f"  PnL Breakdown:")
+        print(f"    Basis Convergence PnL: ${total_basis_pnl:.2f} ({basis_pct_contrib:.1f}%)")
+        print(f"    Funding Carry PnL:     ${funding_earned:.2f} ({funding_pct_contrib:.1f}%)")
+    elif total_net_pnl < 0:
+        print(f"  PnL Breakdown:")
+        print(f"    Basis Convergence PnL: ${total_basis_pnl:.2f}")
+        print(f"    Funding Carry PnL:     ${funding_earned:.2f}")
+    
     return {
         "coin": coin.upper(),
         "net_pnl": total_net_pnl,
@@ -269,6 +292,7 @@ def main():
     parser.add_argument("--exit", type=float, default=0.02, help="Exit basis premium threshold in %")
     parser.add_argument("--fee", type=float, default=0.025, help="Taker fee rate in % (default 0.025%)")
     parser.add_argument("--slippage", type=float, default=0.02, help="Slippage rate on execution in % (default 0.02%)")
+    parser.add_argument("--strict-spot", action="store_true", help="Only enter if the spot candle has a real trade at that minute (no forward-filled stale prices)")
     parser.add_argument("--data-dir", type=str, default="data", help="Data directory containing JSON logs")
     args = parser.parse_args()
     
